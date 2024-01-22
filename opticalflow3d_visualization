@@ -1,0 +1,44 @@
+# pip install pyvista
+
+import SimpleITK as sitk
+import numpy as np
+import nibabel as nib
+import pyvista as pv
+
+# 볼륨 데이터 로드
+fixed_volume_nii = nib.load("/path/to/fixed_volume.nii.gz")
+moving_volume_nii = nib.load("/path/to/moving_volume.nii.gz")
+
+# NIfTI 데이터를 SimpleITK 형식으로 변환
+fixed_volume_sitk = sitk.GetImageFromArray(fixed_volume_nii.get_fdata().astype(np.float32))
+moving_volume_sitk = sitk.GetImageFromArray(moving_volume_nii.get_fdata().astype(np.float32))
+
+# SimpleITK를 사용하여 3D 광학 흐름 계산
+registration_method = sitk.ImageRegistrationMethod()
+registration_method.SetMetricAsCorrelation()
+registration_method.SetOptimizerAsRegularStepGradientDescent(learningRate=2.0, minStep=1e-4, numberOfIterations=500)
+registration_method.SetInitialTransform(sitk.TranslationTransform(fixed_volume_sitk.GetDimension()))
+registration_method.SetInterpolator(sitk.sitkLinear)
+
+transform = registration_method.Execute(fixed_volume_sitk, moving_volume_sitk)
+
+# 변환된 이미지 얻기
+moving_resampled = sitk.Resample(moving_volume_sitk, fixed_volume_sitk, transform, sitk.sitkLinear, 0.0, moving_volume_sitk.GetPixelID())
+
+# 변환된 이미지를 NIfTI 데이터로 다시 변환
+moving_resampled_array = sitk.GetArrayFromImage(moving_resampled)
+moving_resampled_nii = nib.Nifti1Image(moving_resampled_array, affine=fixed_volume_nii.affine)
+
+# 결과 시각화
+pv.set_plot_theme("document")
+p = pv.Plotter()
+
+# 고정 볼륨 표시
+fixed_volume_mesh = pv.wrap(fixed_volume_nii.get_fdata())
+p.add_volume(fixed_volume_mesh, cmap="bone", opacity="sigmoid_5")
+
+# 이동 볼륨 표시
+moving_resampled_mesh = pv.wrap(moving_resampled_array)
+p.add_volume(moving_resampled_mesh, cmap="cool", opacity="sigmoid_5")
+
+p.show()
